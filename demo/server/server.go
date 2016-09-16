@@ -9,7 +9,7 @@ import (
 	"time"
 
 	rtmp "github.com/muzhe686/gortmp"
-	"github.com/zhangpeihao/goflv"
+	flv "github.com/zhangpeihao/goflv"
 	"github.com/zhangpeihao/log"
 )
 
@@ -164,9 +164,9 @@ func publish(stream rtmp.InboundStream) {
 			break
 		}
 		diff2 := uint32((time.Now().UnixNano() - startAt) / 1000000)
-		//		fmt.Printf("diff1: %d, diff2: %d\n", diff1, diff2)
+		// fmt.Printf("diff1: %d, diff2: %d\n", diff1, diff2)
 		if diff1 > diff2+100 {
-			//			fmt.Printf("header.Timestamp: %d, now: %d\n", header.Timestamp, time.Now().UnixNano())
+			// fmt.Printf("header.Timestamp: %d, now: %d\n", header.Timestamp, time.Now().UnixNano())
 			time.Sleep(time.Millisecond * time.Duration(diff1-diff2))
 		}
 	}

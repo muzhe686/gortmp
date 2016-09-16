@@ -7,13 +7,14 @@ import (
 	"bytes"
 	"encoding/binary"
 	"errors"
-	"github.com/zhangpeihao/goamf"
-	"github.com/zhangpeihao/log"
 	"io"
 	"net"
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/zhangpeihao/goamf"
+	"github.com/zhangpeihao/log"
 )
 
 // Conn
@@ -229,6 +230,7 @@ func (conn *conn) checkAndSendHighPriorityMessage() {
 }
 
 // send loop
+// todo: discard video data when congesting
 func (conn *conn) sendLoop() {
 	defer func() {
 		if r := recover(); r != nil {
@@ -243,10 +245,6 @@ func (conn *conn) sendLoop() {
 		case message := <-conn.highPriorityMessageQueue:
 			// Send all high priority messages
 			conn.sendMessage(message)
-		case message := <-conn.middlePriorityMessageQueue:
-			// Send one middle priority messages
-			conn.sendMessage(message)
-			conn.checkAndSendHighPriorityMessage()
 		case message := <-conn.lowPriorityMessageQueue:
 			// Check high priority message queue first
 			conn.checkAndSendHighPriorityMessage()
@@ -453,12 +451,7 @@ func (conn *conn) Send(message *Message) error {
 		conn.highPriorityMessageQueue <- message
 		return nil
 	}
-	if message.Type == VIDEO_TYPE {
-		// Low priority
-		conn.lowPriorityMessageQueue <- message
-		return nil
-	}
-	conn.middlePriorityMessageQueue <- message
+	conn.lowPriorityMessageQueue <- message
 	return nil
 }
 

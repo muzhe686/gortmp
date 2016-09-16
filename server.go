@@ -3,9 +3,10 @@ package gortmp
 
 import (
 	"bufio"
-	"github.com/zhangpeihao/log"
 	"net"
 	"time"
+
+	"github.com/zhangpeihao/log"
 )
 
 type ServerHandler interface {

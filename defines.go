@@ -7,13 +7,14 @@ import (
 	"bufio"
 	"errors"
 	"fmt"
-	"github.com/zhangpeihao/goamf"
-	"github.com/zhangpeihao/log"
 	"io"
 	"net"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/zhangpeihao/goamf"
+	"github.com/zhangpeihao/log"
 )
 
 var DefaultObjectEncoding uint = amf.AMF0
@@ -279,7 +280,7 @@ const (
 	AUTO_TIMESTAMP                      = uint32(0XFFFFFFFF)
 	DEFAULT_HIGH_PRIORITY_BUFFER_SIZE   = 2048
 	DEFAULT_MIDDLE_PRIORITY_BUFFER_SIZE = 128
-	DEFAULT_LOW_PRIORITY_BUFFER_SIZE    = 64
+	DEFAULT_LOW_PRIORITY_BUFFER_SIZE    = 256
 	DEFAULT_CHUNK_SIZE                  = uint32(128)
 	DEFAULT_WINDOW_SIZE                 = 2500000
 	DEFAULT_CAPABILITIES                = float64(15)
