@@ -3,13 +3,14 @@ package main
 import (
 	"flag"
 	"fmt"
-	"github.com/zhangpeihao/goflv"
-	rtmp "github.com/zhangpeihao/gortmp"
-	"github.com/zhangpeihao/log"
 	"os"
 	"os/signal"
 	"syscall"
 	"time"
+
+	rtmp "github.com/muzhe686/gortmp"
+	"github.com/zhangpeihao/goflv"
+	"github.com/zhangpeihao/log"
 )
 
 const (
