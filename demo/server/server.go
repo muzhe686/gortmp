@@ -55,6 +55,7 @@ func (handler *ServerHandler) OnClosed(conn rtmp.Conn) {
 }
 
 func (handler *ServerHandler) OnReceived(conn rtmp.Conn, message *rtmp.Message) {
+	fmt.Printf("OnReceived: type=%d\n", message.Type)
 }
 
 func (handler *ServerHandler) OnReceivedRtmpCommand(conn rtmp.Conn, command *rtmp.Command) {
