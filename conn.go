@@ -61,11 +61,6 @@ type conn struct {
 	highPriorityMessage       *Message
 	highPriorityMessageOffset int
 
-	// Middle-priority send message buffer.
-	middlePriorityMessageQueue  chan *Message
-	middlePriorityMessage       *Message
-	middlePriorityMessageOffset int
-
 	// Low-priority send message buffer.
 	// the video message is assigned the lowest priority.
 	lowPriorityMessageQueue  chan *Message
@@ -127,7 +122,6 @@ func NewConn(c net.Conn, br *bufio.Reader, bw *bufio.Writer, handler ConnHandler
 		outChunkStreams:             make(map[uint32]*OutboundChunkStream),
 		inChunkStreams:              make(map[uint32]*InboundChunkStream),
 		highPriorityMessageQueue:    make(chan *Message, DEFAULT_HIGH_PRIORITY_BUFFER_SIZE),
-		middlePriorityMessageQueue:  make(chan *Message, DEFAULT_MIDDLE_PRIORITY_BUFFER_SIZE),
 		lowPriorityMessageQueue:     make(chan *Message, DEFAULT_LOW_PRIORITY_BUFFER_SIZE),
 		inChunkSize:                 DEFAULT_CHUNK_SIZE,
 		outChunkSize:                DEFAULT_CHUNK_SIZE,
@@ -169,45 +163,29 @@ func (conn *conn) sendMessage(message *Message) {
 		return
 	}
 	//	header.Dump(">>>")
-	if header.MessageLength > conn.outChunkSize {
-		//		chunkStream.lastHeader = nil
-		// Split into some chunk
-		_, err = CopyNToNetwork(conn.bw, message.Buf, int64(conn.outChunkSize))
-		if err != nil {
-			conn.error(err, "sendMessage copy buffer")
-			return
-		}
-		remain := header.MessageLength - conn.outChunkSize
-		// Type 3 chunk
-		for {
-			err = conn.bw.WriteByte(byte(0xc0 | byte(header.ChunkStreamID)))
-			if err != nil {
-				conn.error(err, "sendMessage Type 3 chunk header")
-				return
-			}
-			if remain > conn.outChunkSize {
-				_, err = CopyNToNetwork(conn.bw, message.Buf, int64(conn.outChunkSize))
-				if err != nil {
-					conn.error(err, "sendMessage copy split buffer 1")
-					return
-				}
-				remain -= conn.outChunkSize
-			} else {
-				_, err = CopyNToNetwork(conn.bw, message.Buf, int64(remain))
-				if err != nil {
-					conn.error(err, "sendMessage copy split buffer 2")
-					return
-				}
-				break
-			}
-		}
-	} else {
-		_, err = CopyNToNetwork(conn.bw, message.Buf, int64(header.MessageLength))
-		if err != nil {
-			conn.error(err, "sendMessage copy buffer")
-			return
-		}
+	len := minUint32(header.MessageLength, conn.outChunkSize)
+	_, err = CopyNToNetwork(conn.bw, message.Buf, int64(len))
+	if err != nil {
+		conn.error(err, "sendMessage copy buffer")
+		return
 	}
+	remain := header.MessageLength - len
+	for remain > 0 {
+		err = conn.bw.WriteByte(byte(0xc0 | byte(header.ChunkStreamID)))
+		if err != nil {
+			conn.error(err, "sendMessage Type 3 chunk header")
+			return
+		}
+
+		len = minUint32(remain, conn.outChunkSize)
+		_, err = CopyNToNetwork(conn.bw, message.Buf, int64(len))
+		if err != nil {
+			conn.error(err, "sendMessage copy split buffer")
+			return
+		}
+		remain = header.MessageLength - len
+	}
+
 	err = FlushToNetwork(conn.bw)
 	if err != nil {
 		conn.error(err, "sendMessage Flush 3")
@@ -220,6 +198,13 @@ func (conn *conn) sendMessage(message *Message) {
 		conn.outChunkSize = conn.outChunkSizeTemp
 		conn.outChunkSizeTemp = 0
 	}
+}
+
+func minUint32(a, b uint32) uint32 {
+	if a < b {
+		return a
+	}
+	return b
 }
 
 func (conn *conn) checkAndSendHighPriorityMessage() {

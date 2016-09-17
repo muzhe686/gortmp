@@ -95,8 +95,10 @@ func (ibConn *inboundConn) OnReceivedRtmpCommand(conn Conn, command *Command) {
 	command.Dump()
 	switch command.Name {
 	case "connect":
-		ibConn.onConnect(command)
 		// Connect from client
+		ibConn.onConnect(command)
+	case "FCPublish":
+		ibConn.onFCPublish(command)
 	case "createStream":
 		// Create a new stream
 		ibConn.onCreateStream(command)
@@ -221,6 +223,35 @@ func (ibConn *inboundConn) onConnect(cmd *Command) {
 	} else {
 		ibConn.sendConnectErrorResult(cmd)
 	}
+}
+
+func (ibConn *inboundConn) onFCPublish(cmd *Command) {
+	logger.ModulePrintln(logHandler, log.LOG_LEVEL_TRACE, "inboundConn::onFCPublish")
+	rescmd := &Command{
+		IsFlex:        false,
+		Name:          "onFCPublish",
+		TransactionID: 0,
+		Objects:       make([]interface{}, 2),
+	}
+	rescmd.Objects[0] = nil
+	rescmd.Objects[1] = amf.Object{
+		"code":        NETSTREAM_PUBLISH_START,
+		"description": cmd.Objects[1].(string),
+		"details":     cmd.Objects[1].(string),
+		"clientid":    "0",
+	}
+	buf := new(bytes.Buffer)
+	err := rescmd.Write(buf)
+	CheckError(err, "inboundConn::onFCPublish() Create command")
+
+	message := &Message{
+		ChunkStreamID: CS_ID_USER_CONTROL,
+		Type:          COMMAND_AMF0,
+		Size:          uint32(buf.Len()),
+		Buf:           buf,
+	}
+	message.Dump("onFCPublish")
+	ibConn.conn.Send(message)
 }
 
 func (ibConn *inboundConn) onCreateStream(cmd *Command) {

@@ -5,6 +5,7 @@ package gortmp
 import (
 	"bytes"
 	"fmt"
+
 	"github.com/zhangpeihao/goamf"
 	"github.com/zhangpeihao/log"
 )
@@ -195,16 +196,21 @@ func (stream *inboundStream) onPlay(cmd *Command) bool {
 	// Response
 	stream.conn.conn.SetChunkSize(4096)
 	stream.conn.conn.SendUserControlMessage(EVENT_STREAM_BEGIN)
-	stream.streamReset()
-	stream.streamStart()
+	stream.streamPlayReset()
+	stream.streamPlayStart()
 	stream.rtmpSampleAccess()
 	stream.handler.OnPlayStart(stream)
 	return true
 }
 
 func (stream *inboundStream) onPublish(cmd *Command) bool {
+	// todo: authentication
+	stream.conn.conn.SendUserControlMessage(EVENT_STREAM_BEGIN)
+	stream.streamPublishStart()
+	stream.handler.OnPublishStart(stream)
 	return true
 }
+
 func (stream *inboundStream) onRecevieAudio(cmd *Command) bool {
 	return true
 }
@@ -215,7 +221,7 @@ func (stream *inboundStream) onCloseStream(cmd *Command) bool {
 	return true
 }
 
-func (stream *inboundStream) streamReset() {
+func (stream *inboundStream) streamPlayReset() {
 	cmd := &Command{
 		IsFlex:        false,
 		Name:          "onStatus",
@@ -231,7 +237,7 @@ func (stream *inboundStream) streamReset() {
 	}
 	buf := new(bytes.Buffer)
 	err := cmd.Write(buf)
-	CheckError(err, "inboundStream::streamReset() Create command")
+	CheckError(err, "inboundStream::streamPlayReset() Create command")
 
 	message := &Message{
 		ChunkStreamID: CS_ID_USER_CONTROL,
@@ -239,11 +245,11 @@ func (stream *inboundStream) streamReset() {
 		Size:          uint32(buf.Len()),
 		Buf:           buf,
 	}
-	message.Dump("streamReset")
+	message.Dump("streamPlayReset")
 	stream.conn.conn.Send(message)
 }
 
-func (stream *inboundStream) streamStart() {
+func (stream *inboundStream) streamPlayStart() {
 	cmd := &Command{
 		IsFlex:        false,
 		Name:          "onStatus",
@@ -259,7 +265,7 @@ func (stream *inboundStream) streamStart() {
 	}
 	buf := new(bytes.Buffer)
 	err := cmd.Write(buf)
-	CheckError(err, "inboundStream::streamStart() Create command")
+	CheckError(err, "inboundStream::streamPlayStart() Create command")
 
 	message := &Message{
 		ChunkStreamID: CS_ID_USER_CONTROL,
@@ -267,7 +273,7 @@ func (stream *inboundStream) streamStart() {
 		Size:          uint32(buf.Len()),
 		Buf:           buf,
 	}
-	message.Dump("streamStart")
+	message.Dump("streamPlayStart")
 	stream.conn.conn.Send(message)
 }
 
@@ -277,5 +283,34 @@ func (stream *inboundStream) rtmpSampleAccess() {
 	amf.WriteBoolean(message.Buf, false)
 	amf.WriteBoolean(message.Buf, false)
 	message.Dump("rtmpSampleAccess")
+	stream.conn.conn.Send(message)
+}
+
+func (stream *inboundStream) streamPublishStart() {
+	cmd := &Command{
+		IsFlex:        false,
+		Name:          "onStatus",
+		TransactionID: 0,
+		Objects:       make([]interface{}, 2),
+	}
+	cmd.Objects[0] = nil
+	cmd.Objects[1] = amf.Object{
+		"level":       "status",
+		"code":        NETSTREAM_PUBLISH_START,
+		"description": fmt.Sprintf("%s is now published", stream.streamName),
+		"details":     stream.streamName,
+		"clientid":    "0",
+	}
+	buf := new(bytes.Buffer)
+	err := cmd.Write(buf)
+	CheckError(err, "inboundStream::streamPublishStart() Create command")
+
+	message := &Message{
+		ChunkStreamID: CS_ID_USER_CONTROL,
+		Type:          COMMAND_AMF0,
+		Size:          uint32(buf.Len()),
+		Buf:           buf,
+	}
+	message.Dump("streamPublishStart")
 	stream.conn.conn.Send(message)
 }
