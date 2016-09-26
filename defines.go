@@ -42,6 +42,7 @@ const (
 	NETSTREAM_PLAY_START         = "NetStream.Play.Start"
 	NETSTREAM_PLAY_RESET         = "NetStream.Play.Reset"
 	NETSTREAM_PUBLISH_START      = "NetStream.Publish.Start"
+	NETSTREAM_UNPUBLISH_START    = "NetStream.Unpublish.Sucess"
 )
 
 // Chunk stream ID

@@ -6,7 +6,7 @@ import (
 	"bytes"
 	"fmt"
 
-	"github.com/zhangpeihao/goamf"
+	amf "github.com/zhangpeihao/goamf"
 	"github.com/zhangpeihao/log"
 )
 
@@ -37,6 +37,8 @@ type InboundStream interface {
 	ID() uint32
 	// StreamName
 	StreamName() string
+	// StreamUrl
+	StreamURL() string
 	// Close
 	Close()
 	// Received messages
@@ -63,6 +65,11 @@ func (stream *inboundStream) ID() uint32 {
 // StreamName
 func (stream *inboundStream) StreamName() string {
 	return stream.streamName
+}
+
+// StreamURL
+func (stream *inboundStream) StreamURL() string {
+	return stream.conn.app + "/" + stream.streamName
 }
 
 // Close
@@ -173,8 +180,8 @@ func (stream *inboundStream) SendData(dataType uint8, data []byte, deltaTimestam
 	default:
 		csid = stream.chunkStreamID
 	}
-	message := NewMessage(csid, dataType, stream.id, AUTO_TIMESTAMP, data)
-	message.Timestamp = deltaTimestamp
+	message := NewMessage(csid, dataType, stream.id, deltaTimestamp, data)
+	// message.Timestamp = deltaTimestamp
 	return stream.conn.Send(message)
 }
 
@@ -205,6 +212,21 @@ func (stream *inboundStream) onPlay(cmd *Command) bool {
 
 func (stream *inboundStream) onPublish(cmd *Command) bool {
 	// todo: authentication
+	// Get stream name
+	if cmd.Objects == nil || len(cmd.Objects) < 2 || cmd.Objects[1] == nil {
+		logger.ModulePrintf(logHandler, log.LOG_LEVEL_WARNING,
+			"inboundStream::onPublish: command error 1! %+v\n", cmd)
+		return true
+	}
+
+	if streamName, ok := cmd.Objects[1].(string); !ok {
+		logger.ModulePrintf(logHandler, log.LOG_LEVEL_WARNING,
+			"inboundStream::onPlay: command error 2! %+v\n", cmd)
+		return true
+	} else {
+		stream.streamName = streamName
+	}
+	// Response
 	stream.conn.conn.SendUserControlMessage(EVENT_STREAM_BEGIN)
 	stream.streamPublishStart()
 	stream.handler.OnPublishStart(stream)

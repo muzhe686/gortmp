@@ -183,7 +183,7 @@ func (conn *conn) sendMessage(message *Message) {
 			conn.error(err, "sendMessage copy split buffer")
 			return
 		}
-		remain = header.MessageLength - len
+		remain -= len
 	}
 
 	err = FlushToNetwork(conn.bw)
@@ -232,7 +232,7 @@ func (conn *conn) sendLoop() {
 			conn.sendMessage(message)
 		case message := <-conn.lowPriorityMessageQueue:
 			// Check high priority message queue first
-			conn.checkAndSendHighPriorityMessage()
+			// conn.checkAndSendHighPriorityMessage()
 			conn.sendMessage(message)
 		case <-time.After(time.Second):
 			// Check close
@@ -371,8 +371,8 @@ func (conn *conn) readLoop() {
 			chunkstream.receivedMessage = nil
 		} else {
 			// Unfinish
-			logger.ModulePrintf(logHandler, log.LOG_LEVEL_DEBUG,
-				"Unfinish message(remain: %d, chunksize: %d)\n", remain, conn.inChunkSize)
+			// logger.ModulePrintf(logHandler, log.LOG_LEVEL_DEBUG,
+			// 	"Unfinish message(remain: %d, chunksize: %d)\n", remain, conn.inChunkSize)
 
 			remain = conn.inChunkSize
 			for {
@@ -436,7 +436,12 @@ func (conn *conn) Send(message *Message) error {
 		conn.highPriorityMessageQueue <- message
 		return nil
 	}
-	conn.lowPriorityMessageQueue <- message
+
+	select {
+	case conn.lowPriorityMessageQueue <- message:
+	case <-time.After(time.Second):
+	}
+
 	return nil
 }
 
@@ -503,7 +508,7 @@ func (conn *conn) NewTransactionID() uint32 {
 }
 
 func (conn *conn) received(message *Message) {
-	message.Dump("<<<")
+	// message.Dump("<<<")
 	tmpBuf := make([]byte, 4)
 	var err error
 	var subType byte

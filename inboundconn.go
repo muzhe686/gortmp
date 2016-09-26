@@ -53,6 +53,8 @@ type InboundConn interface {
 	Attach(handler InboundConnHandler)
 	// Get connect request
 	ConnectRequest() *Command
+	// Get app name
+	App() string
 }
 
 type inboundConn struct {
@@ -92,7 +94,7 @@ func (ibConn *inboundConn) OnReceived(conn Conn, message *Message) {
 
 // Callback when recieved message.
 func (ibConn *inboundConn) OnReceivedRtmpCommand(conn Conn, command *Command) {
-	command.Dump()
+	// command.Dump()
 	switch command.Name {
 	case "connect":
 		// Connect from client
@@ -102,6 +104,11 @@ func (ibConn *inboundConn) OnReceivedRtmpCommand(conn Conn, command *Command) {
 	case "createStream":
 		// Create a new stream
 		ibConn.onCreateStream(command)
+	case "FCUnpublish":
+		ibConn.onFCUnpublish(command)
+	case "deleteStream":
+		// Create a new stream
+		// ibConn.onCloseStream(command)
 	default:
 		logger.ModulePrintf(logHandler, log.LOG_LEVEL_TRACE, "inboundConn::ReceivedRtmpCommand: %+v\n", command)
 	}
@@ -245,7 +252,7 @@ func (ibConn *inboundConn) onFCPublish(cmd *Command) {
 	CheckError(err, "inboundConn::onFCPublish() Create command")
 
 	message := &Message{
-		ChunkStreamID: CS_ID_USER_CONTROL,
+		ChunkStreamID: CS_ID_COMMAND,
 		Type:          COMMAND_AMF0,
 		Size:          uint32(buf.Len()),
 		Buf:           buf,
@@ -274,6 +281,35 @@ func (ibConn *inboundConn) onCreateStream(cmd *Command) {
 	ibConn.handler.OnStreamCreated(ibConn, stream)
 	// Response result
 	ibConn.sendCreateStreamSuccessResult(cmd)
+}
+
+func (ibConn *inboundConn) onFCUnpublish(cmd *Command) {
+	logger.ModulePrintln(logHandler, log.LOG_LEVEL_TRACE, "inboundConn::onFCUnpublish")
+	result := &Command{
+		IsFlex:        false,
+		Name:          "onFCUnpublish",
+		TransactionID: 0,
+		Objects:       make([]interface{}, 2),
+	}
+	result.Objects[0] = nil
+	result.Objects[1] = amf.Object{
+		"code":        NETSTREAM_UNPUBLISH_START,
+		"description": cmd.Objects[3].(string),
+		"details":     cmd.Objects[3].(string),
+		"clientid":    "0",
+	}
+	buf := new(bytes.Buffer)
+	err := result.Write(buf)
+	CheckError(err, "inboundConn::onFCUnpublish() Create command")
+
+	message := &Message{
+		ChunkStreamID: CS_ID_COMMAND,
+		Type:          COMMAND_AMF0,
+		Size:          uint32(buf.Len()),
+		Buf:           buf,
+	}
+	message.Dump("onFCUnpublish")
+	ibConn.conn.Send(message)
 }
 
 func (ibConn *inboundConn) onCloseStream(stream *inboundStream) {
@@ -352,4 +388,8 @@ func (ibConn *inboundConn) sendCreateStreamSuccessResult(req *Command) (err erro
 
 func (ibConn *inboundConn) ConnectRequest() *Command {
 	return ibConn.connectReq
+}
+
+func (ibConn *inboundConn) App() string {
+	return ibConn.app
 }
