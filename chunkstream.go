@@ -56,16 +56,15 @@ func (chunkStream *OutboundChunkStream) NewOutboundHeader(message *Message) *Hea
 		message.Timestamp = timestamp
 		message.AbsoluteTimestamp = timestamp
 	}
-	deltaTimestamp := uint32(0)
-	if chunkStream.lastOutAbsoluteTimestamp < message.Timestamp {
-		deltaTimestamp = message.Timestamp - chunkStream.lastOutAbsoluteTimestamp
-	}
+
 	if chunkStream.lastHeader == nil {
 		header.Fmt = HEADER_FMT_FULL
 		header.Timestamp = timestamp
 	} else {
+		if message.Timestamp >= chunkStream.lastOutAbsoluteTimestamp &&
+			header.MessageStreamID == chunkStream.lastHeader.MessageStreamID {
 
-		if header.MessageStreamID == chunkStream.lastHeader.MessageStreamID {
+			deltaTimestamp := message.Timestamp - chunkStream.lastOutAbsoluteTimestamp
 			if header.MessageTypeID == chunkStream.lastHeader.MessageTypeID &&
 				header.MessageLength == chunkStream.lastHeader.MessageLength {
 				switch chunkStream.lastHeader.Fmt {
@@ -93,6 +92,7 @@ func (chunkStream *OutboundChunkStream) NewOutboundHeader(message *Message) *Hea
 			header.Timestamp = timestamp
 		}
 	}
+
 	// Check extended timestamp
 	if header.Timestamp >= 0xffffff {
 		header.ExtendedTimestamp = message.Timestamp

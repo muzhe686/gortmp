@@ -51,6 +51,7 @@ type InboundStream interface {
 	SendVideoData(data []byte, deltaTimestamp uint32) error
 	// Send data
 	SendData(dataType uint8, data []byte, deltaTimestamp uint32) error
+	Send(message *Message) error
 }
 
 func (stream *inboundStream) Conn() InboundConn {
@@ -170,7 +171,7 @@ func (stream *inboundStream) SendVideoData(data []byte, deltaTimestamp uint32) (
 }
 
 // Send data
-func (stream *inboundStream) SendData(dataType uint8, data []byte, deltaTimestamp uint32) (err error) {
+func (stream *inboundStream) SendData(dataType uint8, data []byte, timestamp uint32) (err error) {
 	var csid uint32
 	switch dataType {
 	case VIDEO_TYPE:
@@ -180,9 +181,15 @@ func (stream *inboundStream) SendData(dataType uint8, data []byte, deltaTimestam
 	default:
 		csid = stream.chunkStreamID
 	}
-	message := NewMessage(csid, dataType, stream.id, deltaTimestamp, data)
+	message := NewMessage(csid, dataType, stream.id, timestamp, data)
 	// message.Timestamp = deltaTimestamp
 	return stream.conn.Send(message)
+}
+
+// Send message
+func (stream *inboundStream) Send(message *Message) error {
+	m := NewMessage(message.ChunkStreamID, message.Type, stream.id, message.AbsoluteTimestamp, message.Buf.Bytes())
+	return stream.conn.Send(m)
 }
 
 func (stream *inboundStream) onPlay(cmd *Command) bool {
@@ -211,7 +218,6 @@ func (stream *inboundStream) onPlay(cmd *Command) bool {
 }
 
 func (stream *inboundStream) onPublish(cmd *Command) bool {
-	// todo: authentication
 	// Get stream name
 	if cmd.Objects == nil || len(cmd.Objects) < 2 || cmd.Objects[1] == nil {
 		logger.ModulePrintf(logHandler, log.LOG_LEVEL_WARNING,

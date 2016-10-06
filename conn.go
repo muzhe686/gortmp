@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"encoding/binary"
 	"errors"
+	"fmt"
 	"io"
 	"net"
 	"sync"
@@ -149,10 +150,12 @@ func NewConn(c net.Conn, br *bufio.Reader, bw *bufio.Writer, handler ConnHandler
 func (conn *conn) sendMessage(message *Message) {
 	chunkStream, found := conn.outChunkStreams[message.ChunkStreamID]
 	if !found {
-		logger.ModulePrintf(logHandler, log.LOG_LEVEL_WARNING,
-			"Can not found chunk strem id %d", message.ChunkStreamID)
-		// Error
-		return
+		var err error
+		chunkStream, err = conn.CreateChunkStream(message.ChunkStreamID)
+		if err != nil {
+			fmt.Println(err)
+			return
+		}
 	}
 
 	//	message.Dump(">>>")
@@ -162,6 +165,8 @@ func (conn *conn) sendMessage(message *Message) {
 		conn.error(err, "sendMessage write header")
 		return
 	}
+	fmt.Printf("sendMessage:type=%d,ts=%d\n", header.MessageTypeID, header.Timestamp)
+
 	//	header.Dump(">>>")
 	len := minUint32(header.MessageLength, conn.outChunkSize)
 	_, err = CopyNToNetwork(conn.bw, message.Buf, int64(len))
@@ -171,6 +176,7 @@ func (conn *conn) sendMessage(message *Message) {
 	}
 	remain := header.MessageLength - len
 	for remain > 0 {
+		// send base header
 		err = conn.bw.WriteByte(byte(0xc0 | byte(header.ChunkStreamID)))
 		if err != nil {
 			conn.error(err, "sendMessage Type 3 chunk header")
@@ -311,7 +317,9 @@ func (conn *conn) readLoop() {
 		case HEADER_FMT_CONTINUATION:
 			if chunkstream.receivedMessage != nil {
 				// Continuation the previous unfinished message
+				fmt.Println("Continuation the previous unfinished message")
 				message = chunkstream.receivedMessage
+				break
 			}
 			if chunkstream.lastHeader == nil {
 				logger.ModulePrintf(logHandler, log.LOG_LEVEL_WARNING,
@@ -324,7 +332,11 @@ func (conn *conn) readLoop() {
 				header.Timestamp = chunkstream.lastHeader.Timestamp
 			}
 			chunkstream.lastHeader = header
-			absoluteTimestamp = chunkstream.lastInAbsoluteTimestamp
+			if chunkstream.lastHeader.Fmt == HEADER_FMT_FULL {
+				absoluteTimestamp = chunkstream.lastInAbsoluteTimestamp
+			} else {
+				absoluteTimestamp = chunkstream.lastInAbsoluteTimestamp + header.Timestamp
+			}
 		}
 		if message == nil {
 			// New message
@@ -338,8 +350,8 @@ func (conn *conn) readLoop() {
 				IsInbound:         true,
 				AbsoluteTimestamp: absoluteTimestamp,
 			}
+			chunkstream.lastInAbsoluteTimestamp = absoluteTimestamp
 		}
-		chunkstream.lastInAbsoluteTimestamp = absoluteTimestamp
 		// Read data
 		remain = message.Remain()
 		var n64 int64
@@ -372,7 +384,7 @@ func (conn *conn) readLoop() {
 		} else {
 			// Unfinish
 			// logger.ModulePrintf(logHandler, log.LOG_LEVEL_DEBUG,
-			// 	"Unfinish message(remain: %d, chunksize: %d)\n", remain, conn.inChunkSize)
+			// fmt.Printf("Unfinish message(remain: %d, chunksize: %d)\n", remain, conn.inChunkSize)
 
 			remain = conn.inChunkSize
 			for {
@@ -430,16 +442,19 @@ func (conn *conn) Close() {
 
 // Send a message by channel
 func (conn *conn) Send(message *Message) error {
+	var msgQueue chan *Message
 	csiType := (message.ChunkStreamID % 6)
 	if csiType == CS_ID_PROTOCOL_CONTROL || csiType == CS_ID_COMMAND {
 		// High priority
-		conn.highPriorityMessageQueue <- message
-		return nil
+		msgQueue = conn.highPriorityMessageQueue
+	} else {
+		msgQueue = conn.lowPriorityMessageQueue
 	}
 
 	select {
-	case conn.lowPriorityMessageQueue <- message:
-	case <-time.After(time.Second):
+	case msgQueue <- message:
+	default:
+		fmt.Println("message queue is full")
 	}
 
 	return nil
