@@ -165,7 +165,7 @@ func (conn *conn) sendMessage(message *Message) {
 		conn.error(err, "sendMessage write header")
 		return
 	}
-	fmt.Printf("sendMessage:type=%d,ts=%d\n", header.MessageTypeID, header.Timestamp)
+	fmt.Printf("sendMessage:type=%d,fmt=%d,ts=%d,len=%d\n", header.MessageTypeID, header.Fmt, header.Timestamp, header.MessageLength)
 
 	//	header.Dump(">>>")
 	len := minUint32(header.MessageLength, conn.outChunkSize)
@@ -190,6 +190,7 @@ func (conn *conn) sendMessage(message *Message) {
 			return
 		}
 		remain -= len
+		fmt.Printf("send partial message fmt=3 len=%d\n", len)
 	}
 
 	err = FlushToNetwork(conn.bw)
@@ -317,7 +318,7 @@ func (conn *conn) readLoop() {
 		case HEADER_FMT_CONTINUATION:
 			if chunkstream.receivedMessage != nil {
 				// Continuation the previous unfinished message
-				fmt.Println("Continuation the previous unfinished message")
+				// fmt.Println("Continuation the previous unfinished message")
 				message = chunkstream.receivedMessage
 				break
 			}
@@ -353,62 +354,34 @@ func (conn *conn) readLoop() {
 			chunkstream.lastInAbsoluteTimestamp = absoluteTimestamp
 		}
 		// Read data
-		remain = message.Remain()
-		var n64 int64
-		if remain <= conn.inChunkSize {
-			// One chunk message
-			for {
-				// n64, err = CopyNFromNetwork(message.Buf, conn.br, int64(remain))
-				n64, err = io.CopyN(message.Buf, conn.br, int64(remain))
-				if err == nil {
-					conn.inBytes += uint32(n64)
-					if remain <= uint32(n64) {
-						break
-					} else {
-						remain -= uint32(n64)
-						logger.ModulePrintf(logHandler, log.LOG_LEVEL_TRACE,
-							"Message continue copy remain: %d\n", remain)
-						continue
-					}
+		remain = minUint32(message.Remain(), conn.inChunkSize)
+		for {
+			// n64, err = CopyNFromNetwork(message.Buf, conn.br, int64(remain))
+			n64, err := io.CopyN(message.Buf, conn.br, int64(remain))
+			if err == nil {
+				conn.inBytes += uint32(n64)
+				if remain <= uint32(n64) {
+					break
+				} else {
+					remain -= uint32(n64)
+					logger.ModulePrintf(logHandler, log.LOG_LEVEL_TRACE,
+						"Message continue copy remain: %d\n", remain)
+					continue
 				}
-				netErr, ok := err.(net.Error)
-				if !ok || !netErr.Temporary() {
-					CheckError(err, "Read data 1")
-				}
-				logger.ModulePrintf(logHandler, log.LOG_LEVEL_TRACE,
-					"Message copy blocked!\n")
 			}
+			netErr, ok := err.(net.Error)
+			if !ok || !netErr.Temporary() {
+				CheckError(err, "Read data")
+			}
+			logger.ModulePrintf(logHandler, log.LOG_LEVEL_TRACE,
+				"Message copy blocked!\n")
+		}
+		if message.Remain() == 0 {
 			// Finished message
 			conn.received(message)
 			chunkstream.receivedMessage = nil
 		} else {
 			// Unfinish
-			// logger.ModulePrintf(logHandler, log.LOG_LEVEL_DEBUG,
-			// fmt.Printf("Unfinish message(remain: %d, chunksize: %d)\n", remain, conn.inChunkSize)
-
-			remain = conn.inChunkSize
-			for {
-				// n64, err = CopyNFromNetwork(message.Buf, conn.br, int64(remain))
-				n64, err = io.CopyN(message.Buf, conn.br, int64(remain))
-				if err == nil {
-					conn.inBytes += uint32(n64)
-					if remain <= uint32(n64) {
-						break
-					} else {
-						remain -= uint32(n64)
-						logger.ModulePrintf(logHandler, log.LOG_LEVEL_TRACE,
-							"Unfinish message continue copy remain: %d\n", remain)
-						continue
-					}
-					break
-				}
-				netErr, ok := err.(net.Error)
-				if !ok || !netErr.Temporary() {
-					CheckError(err, "Read data 2")
-				}
-				logger.ModulePrintf(logHandler, log.LOG_LEVEL_TRACE,
-					"Unfinish message copy blocked!\n")
-			}
 			chunkstream.receivedMessage = message
 		}
 
